@@ -1,6 +1,8 @@
 package com.yang.apkinstaller
 
+import android.Manifest
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.widget.Button
@@ -38,17 +40,22 @@ class MainActivity : BaseActivity() {
     }
 
     private fun downloadApk(url: String) {
-        //下载需要存储权限
-//        val permissions = arrayOf(
-//            Manifest.permission.READ_EXTERNAL_STORAGE,
-//            Manifest.permission.WRITE_EXTERNAL_STORAGE
-//        )
-//        if (hasDangerousPermissions(permissions)) {
-        downloadApkActually(url)
-//        } else {
-//            apkUrl = url
-//            requestDangerousPermissions(permissions, REQUEST_CODE_STORAGE_PERMISSION)
-//        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            //分区存储，不需要请求权限
+            downloadApkActually(url)
+        } else {
+            //下载需要存储权限
+            val permissions = arrayOf(
+                Manifest.permission.READ_EXTERNAL_STORAGE,
+                Manifest.permission.WRITE_EXTERNAL_STORAGE
+            )
+            if (hasDangerousPermissions(permissions)) {
+                downloadApkActually(url)
+            } else {
+                apkUrl = url
+                requestDangerousPermissions(permissions, REQUEST_CODE_STORAGE_PERMISSION)
+            }
+        }
     }
 
     override fun handlePermissionResult(isGranted: Boolean, requestCode: Int): Boolean {
@@ -69,7 +76,6 @@ class MainActivity : BaseActivity() {
 
     private fun downloadApkActually(url: String) {
         Log.i("======", "downloadApkActually: $url")
-
         val intent = Intent(this, DownloadApkService::class.java)
         intent.putExtra("downloadUrl", url)
         startService(intent)
