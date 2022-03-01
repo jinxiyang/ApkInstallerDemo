@@ -26,12 +26,12 @@ class MainActivity : BaseActivity() {
         btnDownloadList = findViewById(R.id.btnDownloadList)
 
         btnDownloadApk1.setOnClickListener {
-            downloadApk("")
+            downloadApk(APP_URL)
         }
 
 
         btnDownloadApk2.setOnClickListener {
-            downloadApk("")
+            downloadApk(APP_URL_TEST)
         }
 
         btnDownloadList.setOnClickListener {
@@ -82,10 +82,13 @@ class MainActivity : BaseActivity() {
     }
 
     private fun navigateDownloadList() {
-
+        startActivity(Intent(this, DownloadListActivity::class.java))
     }
 
     companion object {
         val REQUEST_CODE_STORAGE_PERMISSION = 0x123
+
+        val APP_URL = ""
+        val APP_URL_TEST = ""
     }
 }

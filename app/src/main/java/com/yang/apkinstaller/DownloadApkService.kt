@@ -2,14 +2,20 @@ package com.yang.apkinstaller
 
 import android.app.Service
 import android.content.Intent
+import android.net.Uri
+import android.os.Binder
 import android.os.Build
 import android.os.Environment
 import android.os.IBinder
 import android.provider.MediaStore
 import android.util.Log
+import com.yang.apkinstaller.database.bean.DownloadFileRecord
 import com.yang.apkinstaller.storage.SharedStorage
 import okhttp3.*
-import java.io.*
+import java.io.BufferedInputStream
+import java.io.BufferedOutputStream
+import java.io.File
+import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 /**
@@ -20,7 +26,10 @@ import java.util.concurrent.TimeUnit
 class DownloadApkService : Service() {
 
     override fun onBind(intent: Intent): IBinder? {
-        return null
+        return DownloadStateBinder()
+    }
+
+    public class DownloadStateBinder : Binder() {
     }
 
     override fun onCreate() {
@@ -32,18 +41,32 @@ class DownloadApkService : Service() {
             val downloadUrl = it.getStringExtra(DOWNLOAD_URL)
             val autoInstallApk = it.getBooleanExtra(AUTO_INSTALL_APK, true)
             if (!downloadUrl.isNullOrEmpty()) {
-                downloadApk(downloadUrl)
+                recordDatabase(downloadUrl)
             }
         }
         return super.onStartCommand(intent, flags, startId)
     }
 
-    private fun downloadApk(downloadUrl: String) {
-        val fileName = getFileName(downloadUrl)
-        Log.i("======", "downloadApk1: $fileName")
+    private fun recordDatabase(downloadUrl: String) {
+        Thread {
+            val fileName: String = getFileName(downloadUrl)
+            val downloadFileRecord = DownloadFileRecord(
+                0,
+                downloadUrl,
+                null,
+                null,
+                fileName,
+                DownloadFileRecord.STATE_DOWNLOAD_READY
+            )
+            val dao = (application as ApkInstallerApplication).db.downloadFileRecordDao()
+            val id = dao.insert(downloadFileRecord)
+            downloadApk(id, fileName, downloadUrl)
+        }.start()
+    }
 
+    private fun downloadApk(id: Long, fileName: String, downloadUrl: String) {
         val okHttpClient = OkHttpClient.Builder()
-            .connectTimeout(10, TimeUnit.MILLISECONDS)
+            .connectTimeout(10, TimeUnit.SECONDS)
             .build()
 
         val request = Request.Builder()
@@ -56,26 +79,56 @@ class DownloadApkService : Service() {
             override fun onFailure(call: Call, e: IOException) {
                 e.printStackTrace()
                 Log.i("======", "onFailure: 下载失败 "  + e.message)
+                updateRecord(id, DownloadFileRecord.STATE_DOWNLOAD_FAILED)
             }
 
             override fun onResponse(call: Call, response: Response) {
                 val byteStream = response.body?.byteStream()
                 if (byteStream != null) {
                     Log.i("======", "onResponse: 正在下载……")
+
                     try {
-                        val bos = createBufferedOutputStream(fileName) ?: return
+                        val uri = createFileUri(fileName)
+                        if (uri == null) {
+                            Log.i("======", "onResponse: uri null ")
+                            updateRecord(id, DownloadFileRecord.STATE_DOWNLOAD_FAILED)
+                            return
+                        }
+                        updateRecord(id, uri, DownloadFileRecord.STATE_DOWNLOADING)
+                        val openOutputStream = contentResolver.openOutputStream(uri)
+                        val bos = BufferedOutputStream(openOutputStream)
                         val bis = BufferedInputStream(byteStream)
                         writeData(bis, bos)
                         Log.i("======", "onResponse: 下载完成了")
+                        updateRecord(id, DownloadFileRecord.STATE_DOWNLOADED)
                     } catch (e: Exception) {
                         e.printStackTrace()
                         Log.i("======", "onResponse: 下载失败 " + e.message)
+                        updateRecord(id, DownloadFileRecord.STATE_DOWNLOAD_FAILED)
                     }
                 } else {
                     Log.i("======", "onResponse: 下载失败，获取不到数据")
+                    updateRecord(id, DownloadFileRecord.STATE_DOWNLOAD_FAILED)
                 }
             }
         })
+    }
+
+    private fun updateRecord(id: Long, state: Int) {
+        val dao = (application as ApkInstallerApplication).db.downloadFileRecordDao()
+        dao.findById(id)?.let {
+            it.state = state
+            dao.update(it)
+        }
+    }
+
+    private fun updateRecord(id: Long, uri: Uri?, state: Int) {
+        val dao = (application as ApkInstallerApplication).db.downloadFileRecordDao()
+        dao.findById(id)?.let {
+            it.state = state
+            it.uri = uri?.toString()
+            dao.update(it)
+        }
     }
 
     private fun getFileName(url: String): String{
@@ -89,26 +142,17 @@ class DownloadApkService : Service() {
         return fileName
     }
 
-    private fun createBufferedOutputStream(fileName: String): BufferedOutputStream?{
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+    private fun createFileUri(fileName: String): Uri?{
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val fileUri = SharedStorage.queryFile(this, MediaStore.Downloads.EXTERNAL_CONTENT_URI, fileName)
             if (fileUri != null) {
                 SharedStorage.deleteFile(this, fileUri)
             }
-            val uri = SharedStorage.createNewFile(this, MediaStore.Downloads.EXTERNAL_CONTENT_URI, fileName)
-            if (uri == null) {
-                Log.i("======", "createNewFile fail")
-                return null
-            }
-            val outputStream = contentResolver.openOutputStream(uri)
-            if (outputStream == null) {
-                Log.i("======", "openOutputStream fail")
-                return null
-            }
-            return BufferedOutputStream(outputStream)
+            SharedStorage.createNewFile(this, MediaStore.Downloads.EXTERNAL_CONTENT_URI, fileName)
         } else {
             val filesDir = getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
-            return BufferedOutputStream(FileOutputStream(File(filesDir, fileName)))
+            val file = File(filesDir, fileName)
+            Uri.fromFile(file)
         }
     }
 
