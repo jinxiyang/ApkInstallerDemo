@@ -1,6 +1,9 @@
 package com.yang.apkinstaller
 
+import android.content.Intent
+import android.content.pm.PackageInstaller
 import android.os.Bundle
+import android.util.Log
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.yang.apkinstaller.database.bean.DownloadFileRecord
@@ -32,4 +35,28 @@ class DownloadListActivity : BaseActivity() {
             adapter.submitList(list)
         }
     }
+
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+
+        intent?.extras?.apply {
+            val status = this.getInt(PackageInstaller.EXTRA_STATUS)
+            Log.i("======", "onNewIntent: $status")
+            when (status) {
+                PackageInstaller.STATUS_PENDING_USER_ACTION -> {
+                    //提示用户进行安装
+                    val intent1 = this.get(Intent.EXTRA_INTENT) as Intent
+                    startActivity(intent1)
+                }
+                PackageInstaller.STATUS_SUCCESS -> {
+                    //安装成功
+                }
+                else -> {
+                    //失败信息
+                    val msg = this.getString(PackageInstaller.EXTRA_STATUS_MESSAGE)
+                }
+            }
+        }
+    }
+
 }

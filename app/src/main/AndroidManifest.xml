@@ -7,7 +7,8 @@
     <uses-permission
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
-    <uses-permission android:name="android.permission.INSTALL_PACKAGES" />
+
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <application
         android:allowBackup="true"
@@ -20,7 +21,16 @@
         android:usesCleartextTraffic="true">
         <activity
             android:name=".DownloadListActivity"
-            android:exported="false" />
+            android:launchMode="singleTop"
+            android:exported="true">
+
+            <intent-filter>
+
+                <action android:name="com.yang.apkinstaller.INSTALL_APK"/>
+
+            </intent-filter>
+
+        </activity>
         <activity
             android:name=".MainActivity"
             android:exported="true">

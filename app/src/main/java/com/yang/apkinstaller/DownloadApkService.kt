@@ -157,7 +157,7 @@ class DownloadApkService : Service() {
     }
 
     private fun writeData(bis: BufferedInputStream, bos: BufferedOutputStream) {
-        val buffer = ByteArray(1024)
+        val buffer = ByteArray(4096)
         var length = 0
         while (length != -1) {
             length = bis.read(buffer)
